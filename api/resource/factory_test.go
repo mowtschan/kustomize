@@ -9,7 +9,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"sigs.k8s.io/kustomize/api/loader"
+	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/kustomize/api/internal/loader"
 	. "sigs.k8s.io/kustomize/api/resource"
 	"sigs.k8s.io/kustomize/api/types"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
@@ -273,24 +274,43 @@ kind: List
 			},
 		},
 	}
-	testDeploymentA := factory.FromMap(
+	deploymentA := "deployment-a"
+	testDeploymentA, errA := factory.FromMap(
 		map[string]interface{}{
 			"apiVersion": "apps/v1",
 			"kind":       "Deployment",
 			"metadata": map[string]interface{}{
-				"name": "deployment-a",
+				"name": deploymentA,
 			},
 			"spec": testDeploymentSpec,
 		})
-	testDeploymentB := factory.FromMap(
+	if errA != nil {
+		t.Fatalf("failed to create new instance with %v: %v", deploymentA, errA)
+	}
+	deploymentB := "deployment-b"
+	testDeploymentB, errB := factory.FromMap(
 		map[string]interface{}{
 			"apiVersion": "apps/v1",
 			"kind":       "Deployment",
 			"metadata": map[string]interface{}{
-				"name": "deployment-b",
+				"name": deploymentB,
 			},
 			"spec": testDeploymentSpec,
 		})
+	if errB != nil {
+		t.Fatalf("failed to create new instance with %v: %v", deploymentB, errB)
+	}
+
+	deploymentNoItems := "deployment-no-items"
+	testDeploymentNoItems, errNoItems := factory.FromMap(
+		map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "List",
+		},
+	)
+	if errNoItems != nil {
+		t.Fatalf("failed to create new instance with %v: %v", deploymentNoItems, testDeploymentNoItems)
+	}
 
 	fSys := filesys.MakeFsInMemory()
 	fSys.WriteFile(string(patchGood1), []byte(patch1))
@@ -307,6 +327,16 @@ kind: List
 		t.Fatal(err)
 	}
 
+	td, err := createTestDeployment()
+	if err != nil {
+		t.Fatalf("failed to create test deployment: %v", err)
+	}
+
+	tc, err := createTestConfigMap()
+	if err != nil {
+		t.Fatalf("failed to create test config: %v", err)
+	}
+
 	tests := map[string]struct {
 		input       []types.PatchStrategicMerge
 		expectedOut []*Resource
@@ -314,7 +344,7 @@ kind: List
 	}{
 		"happy": {
 			input:       []types.PatchStrategicMerge{patchGood1, patchGood2},
-			expectedOut: []*Resource{testDeployment, testConfigMap},
+			expectedOut: []*Resource{td, tc},
 			expectedErr: false,
 		},
 		"badFileName": {
@@ -329,7 +359,7 @@ kind: List
 		},
 		"listOfPatches": {
 			input:       []types.PatchStrategicMerge{patchList},
-			expectedOut: []*Resource{testDeployment, testConfigMap},
+			expectedOut: []*Resource{td, tc},
 			expectedErr: false,
 		},
 		"listWithAnchorReference": {
@@ -344,7 +374,7 @@ kind: List
 		},
 		"listWithNoItems": {
 			input:       []types.PatchStrategicMerge{patchList4},
-			expectedOut: []*Resource{},
+			expectedOut: []*Resource{testDeploymentNoItems},
 			expectedErr: false,
 		},
 	}
@@ -360,9 +390,9 @@ kind: List
 			assert.Equal(t, len(test.expectedOut), len(rs))
 			for i := range rs {
 				expYaml, err := test.expectedOut[i].AsYAML()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				actYaml, err := rs[i].AsYAML()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, expYaml, actYaml)
 			}
 		})
@@ -634,7 +664,7 @@ data:
 			assert.Equal(t, len(tc.exp.out), len(rs))
 			for i := range rs {
 				actual, err := rs[i].String()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(
 					t, strings.TrimSpace(tc.exp.out[i]), strings.TrimSpace(actual))
 			}
@@ -721,7 +751,7 @@ metadata:
 		t.Run(n, func(t *testing.T) {
 			nin, _ := kio.FromBytes(tc.input)
 			res, err := factory.DropLocalNodes(nin)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			if tc.expected == nil {
 				assert.Equal(t, 0, len(res))
 			} else {

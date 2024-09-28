@@ -6,7 +6,7 @@ package krusty_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	kusttest_test "sigs.k8s.io/kustomize/api/testutils/kusttest"
 )
 
@@ -86,7 +86,7 @@ patches:
 - path: patch.yaml
   target:
     kind: Deployment
-  options: 
+  options:
     allowNameChange: true
 `)
 	options := th.MakeDefaultOptions()
@@ -496,7 +496,7 @@ spec:
 	options := th.MakeDefaultOptions()
 	// depPatch cannot find target with kind `Deployment` and name `new-name`
 	// because the resource never had this GVKN
-	assert.Error(t, th.RunWithErr("overlay", options))
+	require.Error(t, th.RunWithErr("overlay", options))
 }
 
 // Here is a structure of a kustomization of two components, component1
@@ -721,8 +721,6 @@ spec:
         name: myvol
 `)
 	th.WriteK(".", `
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
 namePrefix: foo-
 resources:
 - resources.yaml
@@ -798,8 +796,6 @@ spec:
         name: myvol
 `)
 	th.WriteK(".", `
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
 resources:
 - statefulset.yaml
 patches:

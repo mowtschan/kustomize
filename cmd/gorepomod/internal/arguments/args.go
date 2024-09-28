@@ -14,6 +14,7 @@ import (
 
 const (
 	doItFlag     = "--doIt"
+	localFlag    = "--local"
 	cmdPin       = "pin"
 	cmdUnPin     = "unpin"
 	cmdTidy      = "tidy"
@@ -36,7 +37,6 @@ var (
 		"docs",
 		"examples",
 		"hack",
-		"plugin",
 		"releasing",
 		"site",
 	}
@@ -65,6 +65,7 @@ type Args struct {
 	version           semver.SemVer
 	bump              semver.SvBump
 	doIt              bool
+	localFlag         bool
 }
 
 func (a *Args) GetCommand() Command {
@@ -107,9 +108,14 @@ func (a *Args) DoIt() bool {
 	return a.doIt
 }
 
+func (a *Args) LocalFlag() bool {
+	return a.localFlag
+}
+
 type myArgs struct {
-	args []string
-	doIt bool
+	args      []string
+	doIt      bool
+	localFlag bool
 }
 
 func (a *myArgs) next() (result string) {
@@ -130,6 +136,8 @@ func newArgs() *myArgs {
 	for _, a := range os.Args[1:] {
 		if a == doItFlag {
 			result.doIt = true
+		} else if a == localFlag {
+			result.localFlag = true
 		} else {
 			result.args = append(result.args, a)
 		}
@@ -141,6 +149,7 @@ func Parse() (result *Args, err error) {
 	result = &Args{}
 	clArgs := newArgs()
 	result.doIt = clArgs.doIt
+	result.localFlag = clArgs.localFlag
 
 	result.moduleName = misc.ModuleUnknown
 	result.conditionalModule = misc.ModuleUnknown

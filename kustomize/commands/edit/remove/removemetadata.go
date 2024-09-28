@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/kustomize/api/konfig"
 	"sigs.k8s.io/kustomize/api/types"
-	"sigs.k8s.io/kustomize/kustomize/v4/commands/internal/kustfile"
+	"sigs.k8s.io/kustomize/kustomize/v5/commands/internal/kustfile"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 )
 
@@ -40,7 +40,7 @@ type removeMetadataOptions struct {
 	kind           kindOfAdd
 }
 
-// newCmdRemoveLabel removes one or more commonAnnotations from the kustomization file.
+// newCmdRemoveAnnotation removes one or more commonAnnotations from the kustomization file.
 func newCmdRemoveAnnotation(fSys filesys.FileSystem, v func([]string) error) *cobra.Command {
 	var o removeMetadataOptions
 	o.kind = label

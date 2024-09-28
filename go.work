@@ -1,19 +1,24 @@
-go 1.18
+go 1.22.7
 
 use (
 	./api
 	./cmd/config
 	./cmd/config/internal/commands/e2e/e2econtainerconfig
+	./cmd/config/internal/commands/e2e/e2econtainerenvgenerator
+	./cmd/config/internal/commands/e2e/e2econtainermountbind
+	./cmd/config/internal/commands/e2e/e2econtainersimplegenerator
 	./cmd/depprobcheck
 	./cmd/gorepomod
 	./cmd/k8scopy
 	./cmd/mdtogo
 	./cmd/pluginator
 	./functions/examples/application-cr/image
+	./functions/examples/fn-framework-application
 	./functions/examples/injection-tshirt-sizes/image
 	./functions/examples/template-go-nginx/image
 	./functions/examples/validator-kubeval/image
 	./functions/examples/validator-resource-requests/image
+	./hack
 	./kustomize
 	./kyaml
 	./plugin/builtin/annotationstransformer
@@ -23,7 +28,6 @@ use (
 	./plugin/builtin/iampolicygenerator
 	./plugin/builtin/imagetagtransformer
 	./plugin/builtin/labeltransformer
-	./plugin/builtin/legacyordertransformer
 	./plugin/builtin/namespacetransformer
 	./plugin/builtin/patchjson6902transformer
 	./plugin/builtin/patchstrategicmergetransformer
@@ -32,6 +36,7 @@ use (
 	./plugin/builtin/replacementtransformer
 	./plugin/builtin/replicacounttransformer
 	./plugin/builtin/secretgenerator
+	./plugin/builtin/sortordertransformer
 	./plugin/builtin/suffixtransformer
 	./plugin/builtin/valueaddtransformer
 	./plugin/someteam.example.com/v1/bashedconfigmap
@@ -41,7 +46,6 @@ use (
 	./plugin/someteam.example.com/v1/secretsfromdatabase
 	./plugin/someteam.example.com/v1/sedtransformer
 	./plugin/someteam.example.com/v1/someservicegenerator
-	./plugin/someteam.example.com/v1/starlarkmixer
 	./plugin/someteam.example.com/v1/stringprefixer
 	./plugin/someteam.example.com/v1/validator
 	./plugin/untested/v1/gogetter

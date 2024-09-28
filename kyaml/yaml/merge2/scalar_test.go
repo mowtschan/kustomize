@@ -110,7 +110,7 @@ kind: Deployment
 	{description: `remove scalar -- empty in src`,
 		source: `
 kind: Deployment
-field: null
+field:
 `,
 		dest: `
 kind: Deployment
@@ -137,6 +137,82 @@ kind: Deployment
 `,
 		expected: `
 kind: Deployment
+`,
+		mergeOptions: yaml.MergeOptions{
+			ListIncreaseDirection: yaml.MergeOptionsListAppend,
+		},
+	},
+
+	//
+	// Test Case
+	//
+	{description: `remove scalar -- null in src, empty in dest`,
+		source: `
+kind: Deployment
+field: null
+`,
+		dest: `
+kind: Deployment
+field:
+`,
+		expected: `
+kind: Deployment
+`,
+		mergeOptions: yaml.MergeOptions{
+			ListIncreaseDirection: yaml.MergeOptionsListAppend,
+		},
+	},
+
+	//
+	// Test Case
+	//
+	{description: `remove scalar -- null in src, null in dest`,
+		source: `
+kind: Deployment
+field: null
+`,
+		dest: `
+kind: Deployment
+field: null
+`,
+		expected: `
+kind: Deployment
+`,
+		mergeOptions: yaml.MergeOptions{
+			ListIncreaseDirection: yaml.MergeOptionsListAppend,
+		},
+	},
+
+	//
+	// Test Case
+	//
+	{description: `keep scalar -- missing in src, null in dest`,
+		source: `
+kind: Deployment
+`,
+		dest: `
+kind: Deployment
+field: null
+`,
+		expected: `
+kind: Deployment
+field: null
+`,
+		mergeOptions: yaml.MergeOptions{
+			ListIncreaseDirection: yaml.MergeOptionsListAppend,
+		},
+	},
+	{description: `keep scalar -- missing in src, null in dest, preserves null marker`,
+		source: `
+kind: Deployment
+`,
+		dest: `
+kind: Deployment
+field: ~
+`,
+		expected: `
+kind: Deployment
+field: ~
 `,
 		mergeOptions: yaml.MergeOptions{
 			ListIncreaseDirection: yaml.MergeOptionsListAppend,

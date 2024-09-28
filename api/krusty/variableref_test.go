@@ -460,7 +460,7 @@ vars:
   objref: &config-map-ref
     kind: ConfigMap
     name: kustomize-vars
-    apiVersion: v1
+    version: v1
   fieldref:
     fieldpath: data.DBT_TARGET
 - name: SUSPENDED
@@ -500,10 +500,12 @@ nameReference:
 varReference:
   - path: spec/workflowSpec/arguments/parameters/value
     kind: CronWorkflow
-    apiVersion: argoproj.io/v1alpha1
+    group: argoproj.io
+    version: v1alpha1
   - path: spec
     kind: CronWorkflow
-    apiVersion: argoproj.io/v1alpha1
+    group: argoproj.io
+    version: v1alpha1
 `)
 	th.WriteF("vars.env", `
 DBT_TARGET=development
@@ -1848,7 +1850,7 @@ spec:
       terminationGracePeriodSeconds: 10
       containers:
       - name: nginx
-        image: k8s.gcr.io/nginx-slim:0.8
+        image: registry.k8s.io/nginx-slim:0.8
         ports:
         - containerPort: 80
           name: web
@@ -2123,7 +2125,7 @@ spec:
         app: nginx
     spec:
       containers:
-      - image: k8s.gcr.io/nginx-slim:0.8
+      - image: registry.k8s.io/nginx-slim:0.8
         name: nginx
         ports:
         - containerPort: 80

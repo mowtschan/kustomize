@@ -734,6 +734,177 @@ spec:
           protocol: "UDP"
 `,
 		},
+
+		// Issue #4628
+		"should retain existing null values in targets": {
+			input: `
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: chart
+spec:
+  releaseName: helm-chart
+  timeout: 15m
+  values:
+    chart:
+      replicaCount: null
+      autoscaling: true
+`,
+			patch: yaml.MustParse(`
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: chart
+spec:
+  releaseName: helm-chart
+  timeout: 15m
+  values:
+    deepgram-api:
+      some: value
+`),
+			expected: `
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: chart
+spec:
+  releaseName: helm-chart
+  timeout: 15m
+  values:
+    chart:
+      replicaCount: null
+      autoscaling: true
+    deepgram-api:
+      some: value
+`,
+		},
+
+		// Issue #4928
+		"support numeric keys": {
+			input: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blabla
+  namespace: blabla-ns
+data:
+  "6443": "foobar"
+`,
+			patch: yaml.MustParse(`
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blabla
+  namespace: blabla-ns
+data:
+  "6443": "barfoo"
+  "9110": "foo-foo"
+`),
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blabla
+  namespace: blabla-ns
+data:
+  "6443": "barfoo"
+  "9110": "foo-foo"
+`,
+		},
+
+		"honor different key style one": {
+			input: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blabla
+  namespace: blabla-ns
+data:
+  '6443': "foobar"
+`,
+			patch: yaml.MustParse(`
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blabla
+  namespace: blabla-ns
+data:
+  "6443": "barfoo"
+  9110: "foo-foo"
+`),
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blabla
+  namespace: blabla-ns
+data:
+  '6443': "barfoo"
+  9110: "foo-foo"
+`,
+		},
+
+		"honor different key style two": {
+			input: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blabla
+  namespace: blabla-ns
+data:
+  "6443": "foobar"
+`,
+			patch: yaml.MustParse(`
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blabla
+  namespace: blabla-ns
+data:
+  "6443": "barfoo"
+  '9110': "foo-foo"
+`),
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blabla
+  namespace: blabla-ns
+data:
+  "6443": "barfoo"
+  '9110': "foo-foo"
+`,
+		},
+
+		"different key types": {
+			input: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blabla
+  namespace: blabla-ns
+data:
+  "6443": "key-string-double-quoted"
+`,
+			patch: yaml.MustParse(`
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blabla
+  namespace: blabla-ns
+data:
+  6443: "key-int"
+`),
+			expected: `
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blabla
+  namespace: blabla-ns
+data:
+  "6443": "key-int"
+`,
+		},
 	}
 
 	for tn, tc := range testCases {

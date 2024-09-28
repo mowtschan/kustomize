@@ -34,8 +34,7 @@ type plugin struct{
   FieldSpecs       []types.FieldSpec ` + "`json:\"fieldSpecs,omitempty\" yaml:\"fieldSpecs,omitempty\"`" + `
 }
 
-//noinspection GoUnusedGlobalVariable
-var KustomizePlugin plugin
+var KustomizePlugin plugin //nolint:gochecknoglobals
 
 func (p *plugin) Config(
   _ *resmap.PluginHelpers, config []byte) (err error) {
@@ -47,7 +46,7 @@ func (p *plugin) Transform(rm resmap.ResMap) error {
     return nil
   }
   for _, r := range rm.Resources() {
-    if r.IsEmpty() {
+    if r.IsNilOrEmpty() {
       // Don't mutate empty objects?
       continue
     }
@@ -97,23 +96,26 @@ items:
 
 func runKrmFunction(t *testing.T, input []byte, dir string) []byte {
 	t.Helper()
-	cmd := exec.Command("go", "run", ".")
-	ib := bytes.NewReader(input)
-	cmd.Stdin = ib
-	ob := bytes.NewBuffer([]byte{})
-	cmd.Stdout = ob
-	eb := bytes.NewBuffer([]byte{})
-	cmd.Stderr = eb
-	cmd.Dir = dir
-	err := cmd.Run()
-	if !assert.NoErrorf(t, err, "Stdout:\n%s\nStderr:\n%s\n", ob.String(), eb.String()) {
-		t.FailNow()
+	prepareCmd := func(name string, arg ...string) (*exec.Cmd, *bytes.Buffer, *bytes.Buffer) {
+		ob := bytes.NewBuffer([]byte{})
+		eb := bytes.NewBuffer([]byte{})
+		cmd := exec.Command(name, arg...)
+		cmd.Stdout = ob
+		cmd.Stderr = eb
+		cmd.Dir = dir
+		return cmd, ob, eb
 	}
+	cmd, ob, eb := prepareCmd("go", "mod", "tidy")
+	require.NoErrorf(t, cmd.Run(), "Stdout:\n%s\nStderr:\n%s\n", ob.String(), eb.String())
+
+	cmd, ob, eb = prepareCmd("go", "run", ".")
+	cmd.Stdin = bytes.NewReader(input)
+	require.NoErrorf(t, cmd.Run(), "Stdout:\n%s\nStderr:\n%s\n", ob.String(), eb.String())
+
 	return ob.Bytes()
 }
 
 func TestTransformerConverter(t *testing.T) {
-	t.Skip("TODO: fix this test, which was not running in CI and does not pass")
 	dir := t.TempDir()
 
 	err := os.WriteFile(filepath.Join(dir, "Plugin.go"),
@@ -124,7 +126,7 @@ func TestTransformerConverter(t *testing.T) {
 		filepath.Join(dir, "Plugin.go"))
 
 	err = c.Convert()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	output := runKrmFunction(t, getTransformerInputResource(), filepath.Join(dir, "output"))
 	assert.Equal(t, `apiVersion: config.kubernetes.io/v1
@@ -168,8 +170,7 @@ type plugin struct {
 	types.ConfigMapArgs
 }
 
-//noinspection GoUnusedGlobalVariable
-var KustomizePlugin plugin
+var KustomizePlugin plugin //nolint:gochecknoglobals
 
 func (p *plugin) Config(h *resmap.PluginHelpers, config []byte) (err error) {
 	p.ConfigMapArgs = types.ConfigMapArgs{}
@@ -211,7 +212,6 @@ items: []
 }
 
 func TestGeneratorConverter(t *testing.T) {
-	t.Skip("TODO: fix this test, which was not running in CI and does not pass")
 	dir := t.TempDir()
 
 	err := os.WriteFile(filepath.Join(dir, "Plugin.go"),
@@ -222,7 +222,7 @@ func TestGeneratorConverter(t *testing.T) {
 		filepath.Join(dir, "Plugin.go"))
 
 	err = c.Convert()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	output := runKrmFunction(t, getGeneratorInputResource(), filepath.Join(dir, "output"))
 	assert.Equal(t, `apiVersion: config.kubernetes.io/v1
 kind: ResourceList
@@ -231,6 +231,9 @@ items:
   kind: ConfigMap
   metadata:
     name: staging
+    annotations:
+      internal.config.kubernetes.io/generatorBehavior: unspecified
+      internal.config.kubernetes.io/needsHashSuffix: enabled
 functionConfig:
   apiVersion: foo-corp.com/v1
   kind: FulfillmentCenter

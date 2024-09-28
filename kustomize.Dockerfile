@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # build
-FROM golang:alpine as builder
+FROM public.ecr.aws/docker/library/golang:1.22.7-bullseye as builder
 ARG VERSION
 ARG COMMIT
 ARG DATE
@@ -12,7 +12,6 @@ ADD . /build/
 WORKDIR /build/kustomize
 RUN CGO_ENABLED=0 GO111MODULE=on go build \
     -ldflags="-s -X sigs.k8s.io/kustomize/api/provenance.version=${VERSION} \
-    -X sigs.k8s.io/kustomize/api/provenance.gitCommit=${COMMIT} \
     -X sigs.k8s.io/kustomize/api/provenance.buildDate=${DATE}"
 
 # only copy binary

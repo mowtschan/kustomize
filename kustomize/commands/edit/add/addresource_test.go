@@ -8,7 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	testutils_test "sigs.k8s.io/kustomize/kustomize/v4/commands/internal/testutils"
+	"sigs.k8s.io/kustomize/api/konfig"
+	testutils_test "sigs.k8s.io/kustomize/kustomize/v5/commands/internal/testutils"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 )
 
@@ -30,9 +31,9 @@ func TestAddResourceHappyPath(t *testing.T) {
 
 	cmd := newCmdAddResource(fSys)
 	args := []string{resourceFileName + "*"}
-	assert.NoError(t, cmd.RunE(cmd, args))
+	require.NoError(t, cmd.RunE(cmd, args))
 	content, err := testutils_test.ReadTestKustomization(fSys)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, string(content), `apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namePrefix: some-prefix
@@ -57,33 +58,33 @@ replacements:
 }
 
 func TestAddResourceAlreadyThere(t *testing.T) {
-	fSys := filesys.MakeFsInMemory()
+	fSys := filesys.MakeEmptyDirInMemory()
 	err := fSys.WriteFile(resourceFileName, []byte(resourceFileContent))
 	require.NoError(t, err)
 	testutils_test.WriteTestKustomization(fSys)
 
 	cmd := newCmdAddResource(fSys)
 	args := []string{resourceFileName}
-	assert.NoError(t, cmd.RunE(cmd, args))
+	require.NoError(t, cmd.RunE(cmd, args))
 
 	// adding an existing resource doesn't return an error
-	assert.NoError(t, cmd.RunE(cmd, args))
+	require.NoError(t, cmd.RunE(cmd, args))
 }
 
+// Test for trying to add the kustomization.yaml file itself for resources.
+// This adding operation is not allowed.
 func TestAddKustomizationFileAsResource(t *testing.T) {
-	fSys := filesys.MakeFsInMemory()
-	err := fSys.WriteFile(resourceFileName, []byte(resourceFileContent))
-	require.NoError(t, err)
+	fSys := filesys.MakeEmptyDirInMemory()
 	testutils_test.WriteTestKustomization(fSys)
 
 	cmd := newCmdAddResource(fSys)
-	args := []string{resourceFileName}
-	assert.NoError(t, cmd.RunE(cmd, args))
+	args := []string{konfig.DefaultKustomizationFileName()}
+	require.NoError(t, cmd.RunE(cmd, args))
 
 	content, err := testutils_test.ReadTestKustomization(fSys)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.NotContains(t, string(content), resourceFileName)
+	assert.NotContains(t, string(content), konfig.DefaultKustomizationFileName())
 }
 
 func TestAddResourceNoArgs(t *testing.T) {
@@ -91,6 +92,16 @@ func TestAddResourceNoArgs(t *testing.T) {
 
 	cmd := newCmdAddResource(fSys)
 	err := cmd.Execute()
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, "must specify a resource file", err.Error())
+}
+
+func TestAddResourceFileNotFound(t *testing.T) {
+	fSys := filesys.MakeEmptyDirInMemory()
+
+	cmd := newCmdAddResource(fSys)
+	args := []string{resourceFileName}
+
+	err := cmd.RunE(cmd, args)
+	assert.EqualError(t, err, resourceFileName+" has no match: must build at directory: not a valid directory: '"+resourceFileName+"' doesn't exist")
 }

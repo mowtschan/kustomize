@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	kusttest_test "sigs.k8s.io/kustomize/api/testutils/kusttest"
 )
 
@@ -397,6 +398,7 @@ spec:
   replicas: 1
   template:
     metadata:
+      creationTimestamp: null
       labels:
         workload.sas.com/class: stateless
     spec:
@@ -544,7 +546,7 @@ spec:
     A: X
     B: Y
 `)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	th.AssertActualEqualsExpectedNoIdAnnotations(
 		resMap, `
 apiVersion: example.com/v1
@@ -575,7 +577,7 @@ spec:
     A: X
     B: Y
 `)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	th.AssertActualEqualsExpectedNoIdAnnotations(
 		// This time only patch2 is applied.
 		resMap, `

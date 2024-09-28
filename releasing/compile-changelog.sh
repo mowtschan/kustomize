@@ -49,10 +49,30 @@ results=""
 for((i=0; i < ${#commits[@]}; i+=batchSize))
 do
   commitList=$(IFS="+"; echo "${commits[@]:i:batchSize}" | sed 's/ /+/g')
-  if newResults=$(curl -sSL "https://api.github.com/search/issues?q=$commitList+repo%3Akubernetes-sigs%2Fkustomize" | jq -r '[  .items[] |  { number, title } ]'); then
+
+  if [[ -z "${GITHUB_TOKEN-}" ]]; then
+    echo "WARNING: Please set GITHUB_TOKEN to avoid GitHub API rate limits."
+    if ! newResultsRaw=$(curl -sSL "https://api.github.com/search/issues?q=$commitList+repo%3Akubernetes-sigs%2Fkustomize+is:pull-request"); then
+      echo "Failed to fetch results for commits (exit code $?): $commitList"
+      exit 1
+    fi
+  else
+    if ! newResultsRaw=$(curl -sSL "https://api.github.com/search/issues?q=$commitList+repo%3Akubernetes-sigs%2Fkustomize+is:pull-request" -H "Authorization: Bearer $GITHUB_TOKEN"); then
+      echo "Failed to fetch results for commits (exit code $?): $commitList"
+      exit 1
+    fi
+  fi
+
+  if [[ "${newResultsRaw}" == *"API rate limit exceeded"* ]]; then
+    echo "GitHub API rate limit exceeded. Please set GITHUB_TOKEN to avoid this."
+    exit 1
+  fi
+
+  if [[ "${newResultsRaw}" == *"\"items\":"* ]] ; then
+    newResults=$(echo "$newResultsRaw" | jq -r '[  .items[] |  { number, title } ]')
     results=$(echo "$results" "$newResults" | jq -s '.[0] + .[1] | unique')
   else
-    echo "Failed to fetch results for commits (exit code $?): $commitList"
+    echo "Request for commits $commitList returned invalid results"
     exit 1
   fi
 done

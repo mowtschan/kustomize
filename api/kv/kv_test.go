@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	ldr "sigs.k8s.io/kustomize/api/loader"
+	ldr "sigs.k8s.io/kustomize/api/pkg/loader"
 	valtest_test "sigs.k8s.io/kustomize/api/testutils/valtest"
 	"sigs.k8s.io/kustomize/api/types"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
@@ -50,14 +50,39 @@ func TestKeyValuesFromLines(t *testing.T) {
 			},
 			expectedErr: false,
 		},
-		// TODO: add negative testcases
+		{
+			desc: "no value with equals",
+			content: `
+		k1=
+		`,
+			expectedPairs: []types.Pair{
+				{Key: "k1", Value: ""},
+			},
+			expectedErr: false,
+		},
+		{
+			desc: "no value without equals",
+			content: `
+		k1
+		`,
+			expectedPairs: []types.Pair{
+				{Key: "k1", Value: ""},
+			},
+			expectedErr: false,
+		},
+		{
+			desc:          "invalid UTF-8 content",
+			content:       "Invalid UTF8 Content: \x80\x81",
+			expectedPairs: nil,
+			expectedErr:   true,
+		},
 	}
 
 	kvl := makeKvLoader(filesys.MakeFsInMemory())
 	for _, test := range tests {
 		pairs, err := kvl.keyValuesFromLines([]byte(test.content))
 		if test.expectedErr && err == nil {
-			t.Fatalf("%s should not return error", test.desc)
+			t.Fatalf("%s should return error", test.desc)
 		}
 		if !reflect.DeepEqual(pairs, test.expectedPairs) {
 			t.Errorf("%s should succeed, got:%v exptected:%v", test.desc, pairs, test.expectedPairs)

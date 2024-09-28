@@ -4,15 +4,21 @@
 package krusty_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	. "sigs.k8s.io/kustomize/api/krusty"
 	kusttest_test "sigs.k8s.io/kustomize/api/testutils/kusttest"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
+)
+
+const (
+	repoRootDir = "../../"
 )
 
 const generateDeploymentDotSh = `#!/bin/sh
@@ -41,7 +47,19 @@ spec:
 EOF
 `
 
-func TestFnExecGenerator(t *testing.T) {
+const krmTransformerDotSh = `#!/bin/bash
+cat << EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dummyTransformed
+stringData:
+  foo: bar
+type: Opaque
+EOF
+`
+
+func TestFnExecGeneratorInBase(t *testing.T) {
 	fSys := filesys.MakeFsOnDisk()
 
 	th := kusttest_test.MakeHarnessWithFs(t, fSys)
@@ -49,7 +67,7 @@ func TestFnExecGenerator(t *testing.T) {
 	o.PluginConfig.FnpLoadingOptions.EnableExec = true
 
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	th.WriteK(tmpDir.String(), `
 resources:
 - short_secret.yaml
@@ -74,7 +92,7 @@ stringData:
 `)
 	th.WriteF(filepath.Join(tmpDir.String(), "generateDeployment.sh"), generateDeploymentDotSh)
 
-	assert.NoError(t, os.Chmod(filepath.Join(tmpDir.String(), "generateDeployment.sh"), 0777))
+	require.NoError(t, os.Chmod(filepath.Join(tmpDir.String(), "generateDeployment.sh"), 0777))
 	th.WriteF(filepath.Join(tmpDir.String(), "gener.yaml"), `
 kind: executable
 metadata:
@@ -87,9 +105,8 @@ spec:
 `)
 
 	m := th.Run(tmpDir.String(), o)
-	assert.NoError(t, err)
 	yml, err := m.AsYaml()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, `apiVersion: v1
 kind: Secret
 metadata:
@@ -123,10 +140,10 @@ spec:
       - image: nginx
         name: nginx
 `, string(yml))
-	assert.NoError(t, fSys.RemoveAll(tmpDir.String()))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
 }
 
-func TestFnExecGeneratorWithOverlay(t *testing.T) {
+func TestFnExecGeneratorInBaseWithOverlay(t *testing.T) {
 	fSys := filesys.MakeFsOnDisk()
 
 	th := kusttest_test.MakeHarnessWithFs(t, fSys)
@@ -134,11 +151,11 @@ func TestFnExecGeneratorWithOverlay(t *testing.T) {
 	o.PluginConfig.FnpLoadingOptions.EnableExec = true
 
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	base := filepath.Join(tmpDir.String(), "base")
 	prod := filepath.Join(tmpDir.String(), "prod")
-	assert.NoError(t, fSys.Mkdir(base))
-	assert.NoError(t, fSys.Mkdir(prod))
+	require.NoError(t, fSys.Mkdir(base))
+	require.NoError(t, fSys.Mkdir(prod))
 	th.WriteK(base, `
 resources:
 - short_secret.yaml
@@ -165,7 +182,7 @@ stringData:
 `)
 	th.WriteF(filepath.Join(base, "generateDeployment.sh"), generateDeploymentDotSh)
 
-	assert.NoError(t, os.Chmod(filepath.Join(base, "generateDeployment.sh"), 0777))
+	require.NoError(t, os.Chmod(filepath.Join(base, "generateDeployment.sh"), 0777))
 	th.WriteF(filepath.Join(base, "gener.yaml"), `
 kind: executable
 metadata:
@@ -178,9 +195,9 @@ spec:
 `)
 
 	m := th.Run(prod, o)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	yml, err := m.AsYaml()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, `apiVersion: v1
 kind: Secret
 metadata:
@@ -214,44 +231,34 @@ spec:
       - image: nginx
         name: nginx
 `, string(yml))
-	assert.NoError(t, fSys.RemoveAll(tmpDir.String()))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
 }
 
-func skipIfNoDocker(t *testing.T) {
-	t.Helper()
-	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("skipping because docker binary wasn't found in PATH")
-	}
-}
+func TestFnExecGeneratorInOverlay(t *testing.T) {
+	fSys := filesys.MakeFsOnDisk()
 
-func TestFnContainerGenerator(t *testing.T) {
-	t.Skip("wait for #3881")
-	skipIfNoDocker(t)
+	th := kusttest_test.MakeHarnessWithFs(t, fSys)
+	o := th.MakeOptionsPluginsEnabled()
+	o.PluginConfig.FnpLoadingOptions.EnableExec = true
 
-	// Function plugins should not need the env setup done by MakeEnhancedHarness
-	th := kusttest_test.MakeHarness(t)
-
-	th.WriteK(".", `
+	tmpDir, err := filesys.NewTmpConfirmedDir()
+	require.NoError(t, err)
+	base := filepath.Join(tmpDir.String(), "base")
+	prod := filepath.Join(tmpDir.String(), "prod")
+	require.NoError(t, fSys.Mkdir(base))
+	require.NoError(t, fSys.Mkdir(prod))
+	th.WriteK(base, `
 resources:
 - short_secret.yaml
+`)
+	th.WriteK(prod, `
+resources:
+- ../base
 generators:
 - gener.yaml
 `)
-	// Create generator config
-	th.WriteF("gener.yaml", `
-apiVersion: examples.config.kubernetes.io/v1beta1
-kind: CockroachDB
-metadata:
-  name: demo
-  annotations:
-    config.kubernetes.io/function: |
-      container:
-        image: gcr.io/kustomize-functions/example-cockroachdb:v0.1.0
-spec:
-  replicas: 3
-`)
-	// Create some additional resource just to make sure everything is added
-	th.WriteF("short_secret.yaml", `
+	th.WriteF(filepath.Join(base, "short_secret.yaml"),
+		`
 apiVersion: v1
 kind: Secret
 metadata:
@@ -264,9 +271,25 @@ stringData:
     bootcmd:
     - mkdir /mnt/vda
 `)
-	m := th.Run(".", th.MakeOptionsPluginsEnabled())
-	th.AssertActualEqualsExpected(m, `
-apiVersion: v1
+	th.WriteF(filepath.Join(prod, "generateDeployment.sh"), generateDeploymentDotSh)
+
+	require.NoError(t, os.Chmod(filepath.Join(prod, "generateDeployment.sh"), 0777))
+	th.WriteF(filepath.Join(prod, "gener.yaml"), `
+kind: executable
+metadata:
+  name: demo
+  annotations:
+    config.kubernetes.io/function: |
+      exec:
+        path: ./generateDeployment.sh
+spec:
+`)
+
+	m := th.Run(prod, o)
+	require.NoError(t, err)
+	yml, err := m.AsYaml()
+	require.NoError(t, err)
+	assert.Equal(t, `apiVersion: v1
 kind: Secret
 metadata:
   labels:
@@ -278,235 +301,6 @@ stringData:
     - mkdir /mnt/vda
 type: Opaque
 ---
-apiVersion: policy/v1beta1
-kind: PodDisruptionBudget
-metadata:
-  labels:
-    app: cockroachdb
-    name: demo
-  name: demo-budget
-spec:
-  minAvailable: 67%
-  selector:
-    matchLabels:
-      app: cockroachdb
-      name: demo
----
-apiVersion: v1
-kind: Service
-metadata:
-  labels:
-    app: cockroachdb
-    name: demo
-  name: demo-public
-spec:
-  ports:
-  - name: grpc
-    port: 26257
-    targetPort: 26257
-  - name: http
-    port: 8080
-    targetPort: 8080
-  selector:
-    app: cockroachdb
-    name: demo
----
-apiVersion: v1
-kind: Service
-metadata:
-  annotations:
-    prometheus.io/path: _status/vars
-    prometheus.io/port: "8080"
-    prometheus.io/scrape: "true"
-    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
-  labels:
-    app: cockroachdb
-    name: demo
-  name: demo
-spec:
-  clusterIP: None
-  ports:
-  - name: grpc
-    port: 26257
-    targetPort: 26257
-  - name: http
-    port: 8080
-    targetPort: 8080
-  selector:
-    app: cockroachdb
-    name: demo
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  labels:
-    app: cockroachdb
-    name: demo
-  name: demo
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: cockroachdb
-      name: demo
-  serviceName: demo
-  template:
-    metadata:
-      labels:
-        app: cockroachdb
-        name: demo
-    spec:
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                  - cockroachdb
-              topologyKey: kubernetes.io/hostname
-            weight: 100
-      containers:
-      - command:
-        - /bin/bash
-        - -ecx
-        - |
-          # The use of qualified `+"`hostname -f`"+` is crucial:
-          # Other nodes aren't able to look up the unqualified hostname.
-          CRARGS=("start" "--logtostderr" "--insecure" "--host" "$(hostname -f)" "--http-host" "0.0.0.0")
-          # We only want to initialize a new cluster (by omitting the join flag)
-          # if we're sure that we're the first node (i.e. index 0) and that
-          # there aren't any other nodes running as part of the cluster that
-          # this is supposed to be a part of (which indicates that a cluster
-          # already exists and we should make sure not to create a new one).
-          # It's fine to run without --join on a restart if there aren't any
-          # other nodes.
-          if [ ! "$(hostname)" == "cockroachdb-0" ] ||              [ -e "/cockroach/cockroach-data/cluster_exists_marker" ]
-          then
-            # We don't join cockroachdb in order to avoid a node attempting
-            # to join itself, which currently doesn't work
-            # (https://github.com/cockroachdb/cockroach/issues/9625).
-            CRARGS+=("--join" "cockroachdb-public")
-          fi
-          exec /cockroach/cockroach ${CRARGS[*]}
-        image: cockroachdb/cockroach:v1.1.0
-        imagePullPolicy: IfNotPresent
-        name: demo
-        ports:
-        - containerPort: 26257
-          name: grpc
-        - containerPort: 8080
-          name: http
-        volumeMounts:
-        - mountPath: /cockroach/cockroach-data
-          name: datadir
-      initContainers:
-      - args:
-        - -on-start=/on-start.sh
-        - -service=cockroachdb
-        env:
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        image: cockroachdb/cockroach-k8s-init:0.1
-        imagePullPolicy: IfNotPresent
-        name: bootstrap
-        volumeMounts:
-        - mountPath: /cockroach/cockroach-data
-          name: datadir
-      terminationGracePeriodSeconds: 60
-      volumes:
-      - name: datadir
-        persistentVolumeClaim:
-          claimName: datadir
-  volumeClaimTemplates:
-  - metadata:
-      name: datadir
-    spec:
-      accessModes:
-      - ReadWriteOnce
-      resources:
-        requests:
-          storage: 1Gi
-`)
-}
-
-func TestFnContainerTransformer(t *testing.T) {
-	t.Skip("wait for #3881")
-	skipIfNoDocker(t)
-
-	// Function plugins should not need the env setup done by MakeEnhancedHarness
-	th := kusttest_test.MakeHarness(t)
-
-	th.WriteK(".", `
-resources:
-- data.yaml
-transformers:
-- transf1.yaml
-- transf2.yaml
-`)
-
-	th.WriteF("data.yaml", `
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: nginx
-  labels:
-    app: nginx
-  annotations:
-    tshirt-size: small # this injects the resource reservations
-spec:
-  selector:
-    matchLabels:
-      app: nginx
-  template:
-    metadata:
-      labels:
-        app: nginx
-    spec:
-      containers:
-      - name: nginx
-        image: nginx
-`)
-	// This transformer should add resource reservations based on annotation in data.yaml
-	// See https://github.com/kubernetes-sigs/kustomize/tree/master/functions/examples/injection-tshirt-sizes
-	th.WriteF("transf1.yaml", `
-apiVersion: examples.config.kubernetes.io/v1beta1
-kind: Validator
-metadata:
-  name: valid
-  annotations:
-    config.kubernetes.io/function: |-
-      container:
-        image: gcr.io/kustomize-functions/example-tshirt:v0.2.0
-`)
-	// This transformer will check resources without and won't do any changes
-	// See https://github.com/kubernetes-sigs/kustomize/tree/master/functions/examples/validator-kubeval
-	th.WriteF("transf2.yaml", `
-apiVersion: examples.config.kubernetes.io/v1beta1
-kind: Kubeval
-metadata:
-  name: validate
-  annotations:
-    config.kubernetes.io/function: |
-      container:
-        image: gcr.io/kustomize-functions/example-validator-kubeval:v0.1.0
-spec:
-  strict: true
-  ignoreMissingSchemas: true
-
-  # TODO: Update this to use network/volumes features.
-  # Relevant issues:
-  #   - https://github.com/kubernetes-sigs/kustomize/issues/1901
-  #   - https://github.com/kubernetes-sigs/kustomize/issues/1902
-  kubernetesVersion: "1.16.0"
-  schemaLocation: "file:///schemas"
-`)
-	m := th.Run(".", th.MakeOptionsPluginsEnabled())
-	th.AssertActualEqualsExpected(m, `
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -527,41 +321,341 @@ spec:
       containers:
       - image: nginx
         name: nginx
-        resources:
-          requests:
-            cpu: 200m
-            memory: 50M
+`, string(yml))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
+}
+
+func TestFnExecTransformerInBase(t *testing.T) {
+	fSys := filesys.MakeFsOnDisk()
+
+	th := kusttest_test.MakeHarnessWithFs(t, fSys)
+	o := th.MakeOptionsPluginsEnabled()
+	o.PluginConfig.FnpLoadingOptions.EnableExec = true
+
+	tmpDir, err := filesys.NewTmpConfirmedDir()
+	require.NoError(t, err)
+	base := filepath.Join(tmpDir.String(), "base")
+	require.NoError(t, fSys.Mkdir(base))
+	th.WriteK(base, `
+resources:
+- secret.yaml
+transformers:
+- krm-transformer.yaml
 `)
+	th.WriteF(filepath.Join(base, "secret.yaml"),
+		`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dummy
+type: Opaque
+stringData:
+  foo: bar
+`)
+	th.WriteF(filepath.Join(base, "krmTransformer.sh"), krmTransformerDotSh)
+
+	require.NoError(t, os.Chmod(filepath.Join(base, "krmTransformer.sh"), 0777))
+	th.WriteF(filepath.Join(base, "krm-transformer.yaml"), `
+apiVersion: examples.config.kubernetes.io/v1beta1
+kind: MyPlugin
+metadata:
+  name: notImportantHere
+  annotations:
+    config.kubernetes.io/function: |
+      exec:
+        path: ./krmTransformer.sh
+`)
+
+	m := th.Run(base, o)
+	yml, err := m.AsYaml()
+	require.NoError(t, err)
+	assert.Equal(t, `apiVersion: v1
+kind: Secret
+metadata:
+  name: dummyTransformed
+stringData:
+  foo: bar
+type: Opaque
+`, string(yml))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
+}
+
+func TestFnExecTransformerInBaseWithOverlay(t *testing.T) {
+	fSys := filesys.MakeFsOnDisk()
+
+	th := kusttest_test.MakeHarnessWithFs(t, fSys)
+	o := th.MakeOptionsPluginsEnabled()
+	o.PluginConfig.FnpLoadingOptions.EnableExec = true
+
+	tmpDir, err := filesys.NewTmpConfirmedDir()
+	require.NoError(t, err)
+	base := filepath.Join(tmpDir.String(), "base")
+	prod := filepath.Join(tmpDir.String(), "prod")
+	require.NoError(t, fSys.Mkdir(base))
+	require.NoError(t, fSys.Mkdir(prod))
+	th.WriteK(base, `
+resources:
+- secret.yaml
+transformers:
+- krm-transformer.yaml
+`)
+	th.WriteK(prod, `
+resources:
+- ../base
+`)
+	th.WriteF(filepath.Join(base, "secret.yaml"),
+		`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dummy
+type: Opaque
+stringData:
+  foo: bar
+`)
+	th.WriteF(filepath.Join(base, "krmTransformer.sh"), krmTransformerDotSh)
+
+	require.NoError(t, os.Chmod(filepath.Join(base, "krmTransformer.sh"), 0777))
+	th.WriteF(filepath.Join(base, "krm-transformer.yaml"), `
+apiVersion: examples.config.kubernetes.io/v1beta1
+kind: MyPlugin
+metadata:
+  name: notImportantHere
+  annotations:
+    config.kubernetes.io/function: |
+      exec:
+        path: ./krmTransformer.sh
+`)
+
+	m := th.Run(prod, o)
+	yml, err := m.AsYaml()
+	require.NoError(t, err)
+	assert.Equal(t, `apiVersion: v1
+kind: Secret
+metadata:
+  name: dummyTransformed
+stringData:
+  foo: bar
+type: Opaque
+`, string(yml))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
+}
+
+func TestFnExecTransformerInOverlay(t *testing.T) {
+	fSys := filesys.MakeFsOnDisk()
+
+	th := kusttest_test.MakeHarnessWithFs(t, fSys)
+	o := th.MakeOptionsPluginsEnabled()
+	o.PluginConfig.FnpLoadingOptions.EnableExec = true
+
+	tmpDir, err := filesys.NewTmpConfirmedDir()
+	require.NoError(t, err)
+	base := filepath.Join(tmpDir.String(), "base")
+	prod := filepath.Join(tmpDir.String(), "prod")
+	require.NoError(t, fSys.Mkdir(base))
+	require.NoError(t, fSys.Mkdir(prod))
+	th.WriteK(base, `
+resources:
+- secret.yaml
+`)
+	th.WriteK(prod, `
+resources:
+- ../base
+transformers:
+- krm-transformer.yaml
+`)
+	th.WriteF(filepath.Join(base, "secret.yaml"),
+		`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dummy
+type: Opaque
+stringData:
+  foo: bar
+`)
+	th.WriteF(filepath.Join(prod, "krmTransformer.sh"), krmTransformerDotSh)
+
+	require.NoError(t, os.Chmod(filepath.Join(prod, "krmTransformer.sh"), 0777))
+	th.WriteF(filepath.Join(prod, "krm-transformer.yaml"), `
+apiVersion: examples.config.kubernetes.io/v1beta1
+kind: MyPlugin
+metadata:
+  name: notImportantHere
+  annotations:
+    config.kubernetes.io/function: |
+      exec:
+        path: ./krmTransformer.sh
+`)
+
+	m := th.Run(prod, o)
+	yml, err := m.AsYaml()
+	require.NoError(t, err)
+	assert.Equal(t, `apiVersion: v1
+kind: Secret
+metadata:
+  name: dummyTransformed
+stringData:
+  foo: bar
+type: Opaque
+`, string(yml))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
+}
+
+func skipIfNoDocker(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("skipping because docker binary wasn't found in PATH")
+	}
+}
+
+func TestFnContainerGenerator(t *testing.T) {
+	skipIfNoDocker(t)
+	th := kusttest_test.MakeHarness(t)
+	o := th.MakeOptionsPluginsEnabled()
+	tmpDir, err := filesys.NewTmpConfirmedDir()
+	require.NoError(t, err)
+	th.WriteK(tmpDir.String(), `
+resources:
+- deployment.yaml
+generators:
+- service-set.yaml
+`)
+	// Create generator config
+	th.WriteF(filepath.Join(tmpDir.String(), "service-set.yaml"), `
+apiVersion: kustomize.sigs.k8s.io/v1alpha1
+kind: ServiceGenerator
+metadata:
+  name: simplegenerator
+  annotations:
+    config.kubernetes.io/function: |
+      container:
+        image: gcr.io/kustomize-functions/e2econtainersimplegenerator
+spec:
+  port: 8081
+`)
+	// Create another resource just to make sure everything is added
+	th.WriteF(filepath.Join(tmpDir.String(), "deployment.yaml"), `
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simplegenerator
+`)
+
+	build := exec.Command("docker", "build", ".",
+		"-f", "./cmd/config/internal/commands/e2e/e2econtainersimplegenerator/Dockerfile",
+		"-t", "gcr.io/kustomize-functions/e2econtainersimplegenerator",
+	)
+	build.Dir = repoRootDir
+	require.NoError(t, run(build))
+
+	m := th.Run(tmpDir.String(), o)
+	actual, err := m.AsYaml()
+	require.NoError(t, err)
+	require.Equal(t, `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simplegenerator
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: simplegenerator
+  name: simplegenerator-svc
+spec:
+  ports:
+  - name: http
+    port: 8081
+    protocol: TCP
+    targetPort: 8081
+  selector:
+    app: simplegenerator
+`, string(actual))
+}
+
+func TestFnContainerTransformer(t *testing.T) {
+	skipIfNoDocker(t)
+	th := kusttest_test.MakeHarness(t)
+	o := th.MakeOptionsPluginsEnabled()
+	tmpDir, err := filesys.NewTmpConfirmedDir()
+	require.NoError(t, err)
+	th.WriteK(tmpDir.String(), `
+resources:
+- deployment.yaml
+transformers:
+- e2econtainerconfig.yaml
+`)
+	th.WriteF(filepath.Join(tmpDir.String(), "deployment.yaml"), `
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: foo
+`)
+	th.WriteF(filepath.Join(tmpDir.String(), "e2econtainerconfig.yaml"), `
+apiVersion: example.com/v1alpha1
+kind: Input
+metadata:
+  name: foo
+  annotations:
+    config.kubernetes.io/function: |
+      container:
+        image: "gcr.io/kustomize-functions/e2econtainerconfig"
+`)
+	build := exec.Command("docker", "build", ".",
+		"-f", "./cmd/config/internal/commands/e2e/e2econtainerconfig/Dockerfile",
+		"-t", "gcr.io/kustomize-functions/e2econtainerconfig",
+	)
+	build.Dir = repoRootDir
+	require.NoError(t, run(build))
+	m := th.Run(tmpDir.String(), o)
+	actual, err := m.AsYaml()
+	require.NoError(t, err)
+	assert.Equal(t, `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    a-bool-value: "false"
+    a-int-value: "0"
+    a-string-value: ""
+  name: foo
+`, string(actual))
 }
 
 func TestFnContainerTransformerWithConfig(t *testing.T) {
 	skipIfNoDocker(t)
+	//https://docs.docker.com/engine/reference/commandline/build/#git-repositories
+	build := exec.Command("docker", "build", "https://github.com/GoogleContainerTools/kpt-functions-sdk.git#go-sdk-v0.0.1:ts/hello-world",
+		"-f", "build/label_namespace.Dockerfile",
+		"-t", "gcr.io/kpt-functions/label-namespace:go-sdk-v0.0.1",
+	)
+	require.NoError(t, run(build))
 	th := kusttest_test.MakeHarness(t)
 	o := th.MakeOptionsPluginsEnabled()
 	fSys := filesys.MakeFsOnDisk()
 	b := MakeKustomizer(&o)
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "kustomization.yaml"), []byte(`
+	require.NoError(t, err)
+	require.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "kustomization.yaml"), []byte(`
 resources:
 - data1.yaml
 - data2.yaml
 transformers:
 - label_namespace.yaml
 `)))
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "data1.yaml"), []byte(`
+	require.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "data1.yaml"), []byte(`
 apiVersion: v1
 kind: Namespace
 metadata:
   name: my-namespace
 `)))
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "data2.yaml"), []byte(`
+	require.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "data2.yaml"), []byte(`
 apiVersion: v1
 kind: Namespace
 metadata:
   name: another-namespace
 `)))
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "label_namespace.yaml"), []byte(`
+	require.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "label_namespace.yaml"), []byte(`
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -569,7 +663,7 @@ metadata:
   annotations:
     config.kubernetes.io/function: |-
       container:
-        image: gcr.io/kpt-functions/label-namespace@sha256:4f030738d6d25a207641ca517916431517578bd0eb8d98a8bde04e3bb9315dcd
+        image: gcr.io/kpt-functions/label-namespace:go-sdk-v0.0.1
 data:
   label_name: my-ns-name
   label_value: function-test
@@ -577,9 +671,9 @@ data:
 	m, err := b.Run(
 		fSys,
 		tmpDir.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	actual, err := m.AsYaml()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, `apiVersion: v1
 kind: Namespace
 metadata:
@@ -603,37 +697,43 @@ func TestFnContainerEnvVars(t *testing.T) {
 	fSys := filesys.MakeFsOnDisk()
 	b := MakeKustomizer(&o)
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "kustomization.yaml"), []byte(`
+	require.NoError(t, err)
+	require.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "kustomization.yaml"), []byte(`
 generators:
 - gener.yaml
 `)))
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "gener.yaml"), []byte(`
-apiVersion: v1
-kind: ConfigMap
+	require.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "gener.yaml"), []byte(`
+apiVersion: kustomize.sigs.k8s.io/v1alpha1
+kind: EnvTemplateGenerator
 metadata:
-  name: demo
+  name: e2econtainerenvgenerator
   annotations:
     config.kubernetes.io/function: |
       container:
-        image: quay.io/aodinokov/kpt-templater:0.0.1
+        image: gcr.io/kustomize-functions/e2econtainerenvgenerator
         envs:
         - TESTTEMPLATE=value
-data:
-  template: |
-    apiVersion: v1
-    kind: ConfigMap
-    metadata:
-      name: env
-    data:
-      value: '{{ env "TESTTEMPLATE" }}'
+template: |
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: env
+  data:
+    value: %q
 `)))
+	build := exec.Command("docker", "build", ".",
+		"-f", "./cmd/config/internal/commands/e2e/e2econtainerenvgenerator/Dockerfile",
+		"-t", "gcr.io/kustomize-functions/e2econtainerenvgenerator",
+	)
+	build.Dir = repoRootDir
+	require.NoError(t, run(build))
+
 	m, err := b.Run(
 		fSys,
 		tmpDir.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	actual, err := m.AsYaml()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, `apiVersion: v1
 data:
   value: value
@@ -650,62 +750,54 @@ func TestFnContainerFnMounts(t *testing.T) {
 	fSys := filesys.MakeFsOnDisk()
 	b := MakeKustomizer(&o)
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "kustomization.yaml"), []byte(`
+	require.NoError(t, err)
+	require.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "kustomization.yaml"), []byte(`
 generators:
 - gener.yaml
 `)))
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "gener.yaml"), []byte(`
-apiVersion: v1alpha1
+	require.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "gener.yaml"), []byte(`
+apiVersion: kustomize.sigs.k8s.io/v1alpha1
 kind: RenderHelmChart
 metadata:
   name: demo
   annotations:
     config.kubernetes.io/function: |
       container:
-        image: gcr.io/kpt-fn/render-helm-chart:v0.1.0
+        image: gcr.io/kustomize-functions/e2econtainermountbind
         mounts:
         - type: "bind"
-          src: "./charts"
-          dst: "/tmp/charts"
-helmCharts:
-- name: helloworld-chart
-  releaseName: test
-  valuesFile: /tmp/charts/helloworld-values/values.yaml
+          src: "./yaml"
+          dst: "/tmp/yaml"
+path: /tmp/yaml/resources.yaml
 `)))
-	assert.NoError(t, fSys.MkdirAll(filepath.Join(tmpDir.String(), "charts", "helloworld-chart", "templates")))
-	assert.NoError(t, fSys.MkdirAll(filepath.Join(tmpDir.String(), "charts", "helloworld-values")))
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "charts", "helloworld-chart", "Chart.yaml"), []byte(`
-apiVersion: v2
-name: helloworld-chart
-description: A Helm chart for Kubernetes
-type: application
-version: 0.1.0
-appVersion: 1.16.0
-`)))
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "charts", "helloworld-chart", "templates", "deployment.yaml"), []byte(`
+	require.NoError(t, fSys.MkdirAll(filepath.Join(tmpDir.String(), "yaml", "tmp")))
+	require.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "yaml", "resources.yaml"), []byte(`
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: name
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: 3
 `)))
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "charts", "helloworld-values", "values.yaml"), []byte(`
-replicaCount: 5
-`)))
+	build := exec.Command("docker", "build", ".",
+		"-f", "./cmd/config/internal/commands/e2e/e2econtainermountbind/Dockerfile",
+		"-t", "gcr.io/kustomize-functions/e2econtainermountbind",
+	)
+	build.Dir = repoRootDir
+	require.NoError(t, run(build))
+
 	m, err := b.Run(
 		fSys,
 		tmpDir.String())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	actual, err := m.AsYaml()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, `apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: name
 spec:
-  replicas: 5
+  replicas: 3
 `, string(actual))
 }
 
@@ -716,8 +808,8 @@ func TestFnContainerMountsLoadRestrictions_absolute(t *testing.T) {
 	fSys := filesys.MakeFsOnDisk()
 	b := MakeKustomizer(&o)
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "kustomization.yaml"), []byte(`
+	require.NoError(t, err)
+	require.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "kustomization.yaml"), []byte(`
 generators:
   - |-
     apiVersion: v1alpha1
@@ -736,8 +828,8 @@ generators:
 	_, err = b.Run(
 		fSys,
 		tmpDir.String())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "loading generator plugins: plugin RenderHelmChart."+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loading generator plugins: failed to load generator: plugin RenderHelmChart."+
 		"v1alpha1.[noGrp]/demo.[noNs] with mount path '/tmp/dir' is not permitted; mount paths must"+
 		" be relative to the current kustomization directory")
 }
@@ -749,8 +841,8 @@ func TestFnContainerMountsLoadRestrictions_outsideCurrentDir(t *testing.T) {
 	fSys := filesys.MakeFsOnDisk()
 	b := MakeKustomizer(&o)
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "kustomization.yaml"), []byte(`
+	require.NoError(t, err)
+	require.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "kustomization.yaml"), []byte(`
 generators:
   - |-
     apiVersion: v1alpha1
@@ -769,8 +861,8 @@ generators:
 	_, err = b.Run(
 		fSys,
 		tmpDir.String())
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "loading generator plugins: plugin RenderHelmChart."+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "loading generator plugins: failed to load generator: plugin RenderHelmChart."+
 		"v1alpha1.[noGrp]/demo.[noNs] with mount path './tmp/../../dir' is not permitted; mount paths must "+
 		"be under the current kustomization directory")
 }
@@ -797,6 +889,15 @@ spec:
   replicas: 3
 `)
 	err := th.RunWithErr(".", th.MakeOptionsPluginsEnabled())
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.EqualError(t, err, "couldn't execute function: root working directory '/' not allowed")
+}
+
+// run calls Cmd.Run and wraps the error to include the output to make debugging
+// easier. Not safe for real code, but fine for tests.
+func run(cmd *exec.Cmd) error {
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("%w\n--- COMMAND OUTPUT ---\n%s", err, string(out))
+	}
+	return nil
 }

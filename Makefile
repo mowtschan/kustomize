@@ -3,7 +3,7 @@
 #
 # Makefile for kustomize CLI and API.
 
-LATEST_V4_RELEASE=v4.5.6
+LATEST_RELEASE=v5.4.3
 
 SHELL := /usr/bin/env bash
 GOOS = $(shell go env GOOS)
@@ -56,26 +56,25 @@ uninstall-local-tools:
 
 # Build from local source.
 $(MYGOBIN)/gorepomod:
-	cd cmd/gorepomod; \
-	go install .
+	cd cmd/gorepomod && go install .
 
 # Build from local source.
 $(MYGOBIN)/k8scopy:
-	cd cmd/k8scopy; \
-	go install .
+	cd cmd/k8scopy && go install .
 
 # Build from local source.
 $(MYGOBIN)/pluginator:
-	cd cmd/pluginator; \
-	go install .
+	cd cmd/pluginator && go install .
 
 
 # --- Build targets ---
 
 # Build from local source.
 $(MYGOBIN)/kustomize: build-kustomize-api
-	cd kustomize; \
-	go install .
+	cd kustomize && go install -ldflags \
+	"-X sigs.k8s.io/kustomize/api/provenance.buildDate=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ') \
+	 -X sigs.k8s.io/kustomize/api/provenance.version=$(shell git describe --tags --always --dirty)" \
+	.
 
 kustomize: $(MYGOBIN)/kustomize
 
@@ -83,11 +82,11 @@ kustomize: $(MYGOBIN)/kustomize
 # plugin-to-api compatibility checks.
 .PHONY: build-kustomize-api
 build-kustomize-api: $(MYGOBIN)/goimports $(builtinplugins)
-	cd api; $(MAKE) build
+	cd api && $(MAKE) build
 
 .PHONY: generate-kustomize-api
 generate-kustomize-api:
-	cd api; $(MAKE) generate
+	cd api && $(MAKE) generate
 
 
 # --- Verification targets ---
@@ -100,18 +99,21 @@ verify-kustomize-repo: \
 	build-non-plugin-all \
 	test-go-mod \
 	test-examples-kustomize-against-HEAD \
-	test-examples-kustomize-against-v4-release
+	test-examples-kustomize-against-latest-release
 
 # The following target referenced by a file in
 # https://github.com/kubernetes/test-infra/tree/master/config/jobs/kubernetes-sigs/kustomize
 .PHONY: prow-presubmit-check
 prow-presubmit-check: \
 	install-tools \
+	workspace-sync \
+	generate-kustomize-builtin-plugins \
+	builtin-plugins-diff \
 	test-unit-kustomize-plugins \
 	test-go-mod \
 	build-non-plugin-all \
 	test-examples-kustomize-against-HEAD \
-	test-examples-kustomize-against-v4-release
+	test-examples-kustomize-against-latest-release
 
 .PHONY: license
 license: $(MYGOBIN)/addlicense
@@ -125,6 +127,10 @@ check-license: $(MYGOBIN)/addlicense
 lint: $(MYGOBIN)/golangci-lint $(MYGOBIN)/goimports $(builtinplugins)
 	./hack/for-each-module.sh "make lint"
 
+.PHONY: apidiff
+apidiff: $(MYGOBIN)/go-apidiff ## Run the go-apidiff to verify any API differences compared with origin/master
+	go-apidiff master --compare-imports --print-compatible --repo-path=.
+
 .PHONY: test-unit-all
 test-unit-all: \
 	test-unit-non-plugin \
@@ -133,14 +139,14 @@ test-unit-all: \
 # This target is used by our Github Actions CI to run unit tests for all non-plugin modules in multiple GOOS environments.
 .PHONY: test-unit-non-plugin
 test-unit-non-plugin:
-	./hack/for-each-module.sh "make test" "./plugin/*" 15
+	./hack/for-each-module.sh "make test" "./plugin/*" 20
 
 .PHONY: build-non-plugin-all
 build-non-plugin-all:
-	./hack/for-each-module.sh "make build" "./plugin/*" 15
+	./hack/for-each-module.sh "make build" "./plugin/*" 20
 
 .PHONY: test-unit-kustomize-plugins
-test-unit-kustomize-plugins:
+test-unit-kustomize-plugins: build-kustomize-external-go-plugin
 	./hack/testUnitKustomizePlugins.sh
 
 .PHONY: functions-examples-all
@@ -152,7 +158,7 @@ functions-examples-all:
 	done
 
 test-go-mod:
-	./hack/for-each-module.sh "go list -m -json all > /dev/null && go mod tidy -v"
+	./hack/for-each-module.sh "go mod tidy -v"
 
 .PHONY:
 verify-kustomize-e2e: $(MYGOBIN)/mdrip $(MYGOBIN)/kind
@@ -169,10 +175,15 @@ test-examples-kustomize-against-HEAD: $(MYGOBIN)/kustomize $(MYGOBIN)/mdrip
 	./hack/testExamplesAgainstKustomize.sh HEAD
 
 .PHONY:
-test-examples-kustomize-against-v4-release: $(MYGOBIN)/mdrip
-	./hack/testExamplesAgainstKustomize.sh v4@$(LATEST_V4_RELEASE)
+test-examples-kustomize-against-latest-release: $(MYGOBIN)/mdrip
+	./hack/testExamplesAgainstKustomize.sh v5@$(LATEST_RELEASE)
 
-
+# Pushes dependencies in the go.work file back to go.mod files of each workspace module.
+.PHONY: workspace-sync
+workspace-sync:
+	go work sync
+	./hack/doGoMod.sh tidy
+	
 # --- Cleanup targets ---
 .PHONY: clean
 clean: clean-kustomize-external-go-plugin uninstall-tools

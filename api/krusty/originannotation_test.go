@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/kustomize/api/internal/utils"
 	"sigs.k8s.io/kustomize/api/krusty"
 	kusttest_test "sigs.k8s.io/kustomize/api/testutils/kusttest"
@@ -27,8 +28,6 @@ spec:
   - port: 7002
 `)
 	th.WriteK(".", `
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
 resources:
 - service.yaml
 buildMetadata: [originAnnotations]
@@ -175,10 +174,10 @@ configMapGenerator:
 - name: json
   literals:
   - 'v2=[{"path": "var/druid/segment-cache"}]'
-  - >- 
-    druid_segmentCache_locations=[{"path": 
-    "var/druid/segment-cache", 
-    "maxSize": 32000000000, 
+  - >-
+    druid_segmentCache_locations=[{"path":
+    "var/druid/segment-cache",
+    "maxSize": 32000000000,
     "freeSpacePercent": 1.0}]
 secretGenerator:
 - name: bob
@@ -245,8 +244,8 @@ metadata:
 ---
 apiVersion: v1
 data:
-  druid_segmentCache_locations: '[{"path":  "var/druid/segment-cache",  "maxSize":
-    32000000000,  "freeSpacePercent": 1.0}]'
+  druid_segmentCache_locations: '[{"path": "var/druid/segment-cache", "maxSize": 32000000000,
+    "freeSpacePercent": 1.0}]'
   v2: '[{"path": "var/druid/segment-cache"}]'
 kind: ConfigMap
 metadata:
@@ -256,7 +255,7 @@ metadata:
       configuredBy:
         apiVersion: builtin
         kind: ConfigMapGenerator
-  name: blah-json-5298bc8g99
+  name: blah-json-m8529t979f
 ---
 apiVersion: v1
 data:
@@ -419,7 +418,7 @@ func TestAnnoOriginCustomExecGenerator(t *testing.T) {
 	o.PluginConfig.FnpLoadingOptions.EnableExec = true
 
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	th.WriteK(tmpDir.String(), `
 resources:
 - short_secret.yaml
@@ -445,7 +444,7 @@ stringData:
 `)
 	th.WriteF(filepath.Join(tmpDir.String(), "generateDeployment.sh"), generateDeploymentDotSh)
 
-	assert.NoError(t, os.Chmod(filepath.Join(tmpDir.String(), "generateDeployment.sh"), 0777))
+	require.NoError(t, os.Chmod(filepath.Join(tmpDir.String(), "generateDeployment.sh"), 0777))
 	th.WriteF(filepath.Join(tmpDir.String(), "gener.yaml"), `
 kind: executable
 metadata:
@@ -458,9 +457,9 @@ spec:
 `)
 
 	m := th.Run(tmpDir.String(), o)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	yml, err := m.AsYaml()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, `apiVersion: v1
 kind: Secret
 metadata:
@@ -502,7 +501,7 @@ spec:
       - image: nginx
         name: nginx
 `, string(yml))
-	assert.NoError(t, fSys.RemoveAll(tmpDir.String()))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
 }
 
 func TestAnnoOriginCustomInlineExecGenerator(t *testing.T) {
@@ -513,7 +512,7 @@ func TestAnnoOriginCustomInlineExecGenerator(t *testing.T) {
 	o.PluginConfig.FnpLoadingOptions.EnableExec = true
 
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	th.WriteK(tmpDir.String(), `
 resources:
 - short_secret.yaml
@@ -546,11 +545,11 @@ stringData:
     - mkdir /mnt/vda
 `)
 	th.WriteF(filepath.Join(tmpDir.String(), "generateDeployment.sh"), generateDeploymentDotSh)
-	assert.NoError(t, os.Chmod(filepath.Join(tmpDir.String(), "generateDeployment.sh"), 0777))
+	require.NoError(t, os.Chmod(filepath.Join(tmpDir.String(), "generateDeployment.sh"), 0777))
 	m := th.Run(tmpDir.String(), o)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	yml, err := m.AsYaml()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, `apiVersion: v1
 kind: Secret
 metadata:
@@ -592,7 +591,7 @@ spec:
       - image: nginx
         name: nginx
 `, string(yml))
-	assert.NoError(t, fSys.RemoveAll(tmpDir.String()))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
 }
 
 func TestAnnoOriginCustomExecGeneratorWithOverlay(t *testing.T) {
@@ -603,11 +602,11 @@ func TestAnnoOriginCustomExecGeneratorWithOverlay(t *testing.T) {
 	o.PluginConfig.FnpLoadingOptions.EnableExec = true
 
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	base := filepath.Join(tmpDir.String(), "base")
 	prod := filepath.Join(tmpDir.String(), "prod")
-	assert.NoError(t, fSys.Mkdir(base))
-	assert.NoError(t, fSys.Mkdir(prod))
+	require.NoError(t, fSys.Mkdir(base))
+	require.NoError(t, fSys.Mkdir(prod))
 	th.WriteK(base, `
 resources:
 - short_secret.yaml
@@ -635,7 +634,7 @@ stringData:
 `)
 	th.WriteF(filepath.Join(base, "generateDeployment.sh"), generateDeploymentDotSh)
 
-	assert.NoError(t, os.Chmod(filepath.Join(base, "generateDeployment.sh"), 0777))
+	require.NoError(t, os.Chmod(filepath.Join(base, "generateDeployment.sh"), 0777))
 	th.WriteF(filepath.Join(base, "gener.yaml"), `
 kind: executable
 metadata:
@@ -648,9 +647,9 @@ spec:
 `)
 
 	m := th.Run(prod, o)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	yml, err := m.AsYaml()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, `apiVersion: v1
 kind: Secret
 metadata:
@@ -692,7 +691,7 @@ spec:
       - image: nginx
         name: nginx
 `, string(yml))
-	assert.NoError(t, fSys.RemoveAll(tmpDir.String()))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
 }
 
 func TestAnnoOriginCustomInlineExecGeneratorWithOverlay(t *testing.T) {
@@ -703,11 +702,11 @@ func TestAnnoOriginCustomInlineExecGeneratorWithOverlay(t *testing.T) {
 	o.PluginConfig.FnpLoadingOptions.EnableExec = true
 
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	base := filepath.Join(tmpDir.String(), "base")
 	prod := filepath.Join(tmpDir.String(), "prod")
-	assert.NoError(t, fSys.Mkdir(base))
-	assert.NoError(t, fSys.Mkdir(prod))
+	require.NoError(t, fSys.Mkdir(base))
+	require.NoError(t, fSys.Mkdir(prod))
 	th.WriteK(base, `
 resources:
 - short_secret.yaml
@@ -742,11 +741,11 @@ stringData:
     - mkdir /mnt/vda
 `)
 	th.WriteF(filepath.Join(base, "generateDeployment.sh"), generateDeploymentDotSh)
-	assert.NoError(t, os.Chmod(filepath.Join(base, "generateDeployment.sh"), 0777))
+	require.NoError(t, os.Chmod(filepath.Join(base, "generateDeployment.sh"), 0777))
 	m := th.Run(prod, o)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	yml, err := m.AsYaml()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, `apiVersion: v1
 kind: Secret
 metadata:
@@ -788,15 +787,15 @@ spec:
       - image: nginx
         name: nginx
 `, string(yml))
-	assert.NoError(t, fSys.RemoveAll(tmpDir.String()))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
 }
 
 func TestAnnoOriginRemoteBuiltinGenerator(t *testing.T) {
 	fSys := filesys.MakeFsOnDisk()
 	b := krusty.MakeKustomizer(krusty.MakeDefaultOptions())
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
-	assert.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "kustomization.yaml"), []byte(`
+	require.NoError(t, err)
+	require.NoError(t, fSys.WriteFile(filepath.Join(tmpDir.String(), "kustomization.yaml"), []byte(`
 resources:
 - github.com/kubernetes-sigs/kustomize/examples/ldap/base/?ref=v1.0.6
 buildMetadata: [originAnnotations]
@@ -812,7 +811,7 @@ buildMetadata: [originAnnotations]
 		t.FailNow()
 	}
 	yml, err := m.AsYaml()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, string(yml), `kind: ConfigMap
 metadata:
   annotations:
@@ -824,7 +823,7 @@ metadata:
         apiVersion: builtin
         kind: ConfigMapGenerator
   name: ldap-configmap-4d7m6k5b42`)
-	assert.NoError(t, fSys.RemoveAll(tmpDir.String()))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
 }
 
 func TestAnnoOriginInlineBuiltinGenerator(t *testing.T) {
@@ -1013,7 +1012,7 @@ func TestAnnoOriginGeneratorInTransformersField(t *testing.T) {
 	o.PluginConfig.FnpLoadingOptions.EnableExec = true
 
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	th.WriteK(tmpDir.String(), `
 transformers:
 - gener.yaml
@@ -1022,7 +1021,7 @@ buildMetadata: [originAnnotations]
 
 	th.WriteF(filepath.Join(tmpDir.String(), "generateDeployment.sh"), generateDeploymentDotSh)
 
-	assert.NoError(t, os.Chmod(filepath.Join(tmpDir.String(), "generateDeployment.sh"), 0777))
+	require.NoError(t, os.Chmod(filepath.Join(tmpDir.String(), "generateDeployment.sh"), 0777))
 	th.WriteF(filepath.Join(tmpDir.String(), "gener.yaml"), `
 kind: executable
 metadata:
@@ -1035,9 +1034,9 @@ spec:
 `)
 
 	m := th.Run(tmpDir.String(), o)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	yml, err := m.AsYaml()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1064,7 +1063,7 @@ spec:
       - image: nginx
         name: nginx
 `, string(yml))
-	assert.NoError(t, fSys.RemoveAll(tmpDir.String()))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
 }
 
 func TestAnnoOriginGeneratorInTransformersFieldWithOverlay(t *testing.T) {
@@ -1075,11 +1074,11 @@ func TestAnnoOriginGeneratorInTransformersFieldWithOverlay(t *testing.T) {
 	o.PluginConfig.FnpLoadingOptions.EnableExec = true
 
 	tmpDir, err := filesys.NewTmpConfirmedDir()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	base := filepath.Join(tmpDir.String(), "base")
 	prod := filepath.Join(tmpDir.String(), "prod")
-	assert.NoError(t, fSys.Mkdir(base))
-	assert.NoError(t, fSys.Mkdir(prod))
+	require.NoError(t, fSys.Mkdir(base))
+	require.NoError(t, fSys.Mkdir(prod))
 
 	th.WriteK(base, `
 transformers:
@@ -1088,7 +1087,7 @@ transformers:
 
 	th.WriteF(filepath.Join(base, "generateDeployment.sh"), generateDeploymentDotSh)
 
-	assert.NoError(t, os.Chmod(filepath.Join(base, "generateDeployment.sh"), 0777))
+	require.NoError(t, os.Chmod(filepath.Join(base, "generateDeployment.sh"), 0777))
 	th.WriteF(filepath.Join(base, "gener.yaml"), `
 kind: executable
 metadata:
@@ -1107,9 +1106,9 @@ buildMetadata: [originAnnotations, transformerAnnotations]
 `)
 
 	m := th.Run(prod, o)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	yml, err := m.AsYaml()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1141,5 +1140,5 @@ spec:
       - image: nginx
         name: nginx
 `, string(yml))
-	assert.NoError(t, fSys.RemoveAll(tmpDir.String()))
+	require.NoError(t, fSys.RemoveAll(tmpDir.String()))
 }

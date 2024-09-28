@@ -6,10 +6,11 @@ package add
 import (
 	"errors"
 	"log"
+	"slices"
 
 	"github.com/spf13/cobra"
-	"sigs.k8s.io/kustomize/kustomize/v4/commands/internal/kustfile"
-	"sigs.k8s.io/kustomize/kustomize/v4/commands/internal/util"
+	"sigs.k8s.io/kustomize/kustomize/v5/commands/internal/kustfile"
+	"sigs.k8s.io/kustomize/kustomize/v5/commands/internal/util"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 )
 
@@ -62,7 +63,7 @@ func (o *addGeneratorOptions) RunAddGenerator(fSys filesys.FileSystem) error {
 		return err
 	}
 	for _, t := range o.generatorFilePaths {
-		if kustfile.StringInSlice(t, m.Generators) {
+		if slices.Contains(m.Generators, t) {
 			log.Printf("generator %s already in kustomization file", t)
 			continue
 		}

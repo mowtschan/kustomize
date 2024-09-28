@@ -11,8 +11,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/kustomize/cmd/config/internal/commands"
 	"sigs.k8s.io/kustomize/kyaml/copyutil"
+	"sigs.k8s.io/kustomize/kyaml/filesys"
 )
 
 // TestGrepCommand_files verifies grep reads the files and filters them
@@ -396,7 +398,7 @@ spec:
 		t.Run(test.name, func(t *testing.T) {
 			sourceDir := filepath.Join("test", "testdata", test.dataset)
 			baseDir := t.TempDir()
-			copyutil.CopyDir(sourceDir, baseDir)
+			require.NoError(t, copyutil.CopyDir(filesys.MakeFsOnDisk(), sourceDir, baseDir))
 			runner := commands.GetGrepRunner("")
 			actual := &bytes.Buffer{}
 			runner.Command.SetOut(actual)
@@ -417,5 +419,19 @@ spec:
 				t.FailNow()
 			}
 		})
+	}
+}
+
+// TestGrepCmd_noQuery verifies the grep command errors when QUERY argument is missing
+func TestGrepCmd_noQuery(t *testing.T) {
+	b := &bytes.Buffer{}
+	r := commands.GetGrepRunner("")
+	// No QUERY argument
+	r.Command.SetArgs([]string{})
+	r.Command.SetOut(b)
+
+	err := r.Command.Execute()
+	if assert.Error(t, err) {
+		assert.Contains(t, err.Error(), "missing required argument: QUERY")
 	}
 }

@@ -26,6 +26,8 @@ do nothing but log commands
 unless you add the `--doIt` flag,
 allowing the change._
 
+_If you want to run `gorepomod` on your fork or outside of `$GOSRC` directory, add `--local`  flag to your command._
+
 #### `gorepomod list`
 
 Lists modules and intra-repo dependencies.
@@ -78,7 +80,7 @@ If the existing version is _v1.2.7_, then the new version will be:
  - `minor` -> _v1.3.0_
  - `major` -> _v2.0.0_
 
-After establishing the the version, the command looks for a branch named
+After establishing the version, the command looks for a branch named
 
 > _release-{module}/-v{major}.{minor}_
 

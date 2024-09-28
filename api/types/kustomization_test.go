@@ -16,6 +16,84 @@ func fixKustomizationPostUnmarshallingCheck(k, e *Kustomization) bool {
 		k.Bases == nil
 }
 
+func TestKustomization_CheckDeprecatedFields(t *testing.T) {
+	tests := []struct {
+		name string
+		k    Kustomization
+		want *[]string
+	}{
+		{
+			name: "using_bases",
+			k: Kustomization{
+				Bases: []string{"base"},
+			},
+			want: &[]string{deprecatedBaseWarningMessage},
+		},
+		{
+			name: "using_CommonLabels",
+			k: Kustomization{
+				CommonLabels: map[string]string{},
+			},
+			want: &[]string{deprecatedCommonLabelsWarningMessage},
+		},
+		{
+			name: "using_ImageTags",
+			k: Kustomization{
+				ImageTags: []Image{},
+			},
+			want: &[]string{deprecatedImageTagsWarningMessage},
+		},
+		{
+			name: "usingPatchesJson6902",
+			k: Kustomization{
+				PatchesJson6902: []Patch{},
+			},
+			want: &[]string{deprecatedPatchesJson6902Message},
+		},
+		{
+			name: "usingPatchesStrategicMerge",
+			k: Kustomization{
+				PatchesStrategicMerge: []PatchStrategicMerge{},
+			},
+			want: &[]string{deprecatedPatchesStrategicMergeMessage},
+		},
+		{
+			name: "usingVar",
+			k: Kustomization{
+				Vars: []Var{},
+			},
+			want: &[]string{deprecatedVarsMessage},
+		},
+		{
+			name: "usingAll",
+			k: Kustomization{
+				Bases:                 []string{"base"},
+				CommonLabels:          map[string]string{},
+				ImageTags:             []Image{},
+				PatchesJson6902:       []Patch{},
+				PatchesStrategicMerge: []PatchStrategicMerge{},
+				Vars:                  []Var{},
+			},
+			want: &[]string{
+				deprecatedBaseWarningMessage,
+				deprecatedCommonLabelsWarningMessage,
+				deprecatedImageTagsWarningMessage,
+				deprecatedPatchesJson6902Message,
+				deprecatedPatchesStrategicMergeMessage,
+				deprecatedVarsMessage,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := tt.k
+			if got := k.CheckDeprecatedFields(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Kustomization.CheckDeprecatedFields() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFixKustomizationPostUnmarshalling(t *testing.T) {
 	var k Kustomization
 	k.Bases = append(k.Bases, "foo")
@@ -28,7 +106,7 @@ func TestFixKustomizationPostUnmarshalling(t *testing.T) {
 	k.CommonLabels = map[string]string{
 		"foo": "bar",
 	}
-	k.FixKustomizationPostUnmarshalling()
+	k.FixKustomization()
 
 	expected := Kustomization{
 		TypeMeta: TypeMeta{
@@ -60,7 +138,7 @@ func TestFixKustomizationPostUnmarshalling_2(t *testing.T) {
 		},
 	}
 	k.Bases = append(k.Bases, "foo")
-	k.FixKustomizationPostUnmarshalling()
+	k.FixKustomization()
 
 	expected := Kustomization{
 		TypeMeta: TypeMeta{
@@ -209,20 +287,70 @@ unknown: foo`)
 	if err == nil {
 		t.Fatalf("expect an error")
 	}
-	expect := "json: unknown field \"unknown\""
+	expect := "invalid Kustomization: json: unknown field \"unknown\""
 	if err.Error() != expect {
 		t.Fatalf("expect %v but got: %v", expect, err.Error())
 	}
 }
 
-func TestUnmarshal_InvalidYaml(t *testing.T) {
-	y := []byte(`
-apiVersion: kustomize.config.k8s.io/v1beta1
+func TestUnmarshal_Failed(t *testing.T) {
+	tests := []struct {
+		name               string
+		kustomizationYamls []byte
+		errMsg             string
+	}{
+		{
+			name: "invalid yaml",
+			kustomizationYamls: []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-unknown`)
-	var k Kustomization
-	err := k.Unmarshal(y)
-	if err == nil {
-		t.Fatalf("expect an error")
+unknown`),
+			errMsg: "invalid Kustomization: yaml: line 4: could not find expected ':'",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var k Kustomization
+			if err := k.Unmarshal(tt.kustomizationYamls); err == nil || err.Error() != tt.errMsg {
+				t.Errorf("Kustomization.Unmarshal() error = %v, wantErr %v", err, tt.errMsg)
+			}
+		})
+	}
+}
+
+func TestKustomization_CheckEmpty(t *testing.T) {
+	tests := []struct {
+		name          string
+		kustomization *Kustomization
+		wantErr       bool
+	}{
+		{
+			name:          "empty kustomization.yaml",
+			kustomization: &Kustomization{},
+			wantErr:       true,
+		},
+		{
+			name: "empty kustomization.yaml",
+			kustomization: &Kustomization{
+				TypeMeta: TypeMeta{
+					Kind:       KustomizationKind,
+					APIVersion: KustomizationVersion,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name:          "non empty kustomization.yaml",
+			kustomization: &Kustomization{Resources: []string{"res"}},
+			wantErr:       false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			k := tt.kustomization
+			k.FixKustomization()
+			if err := k.CheckEmpty(); (err != nil) != tt.wantErr {
+				t.Errorf("Kustomization.CheckEmpty() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
 	}
 }

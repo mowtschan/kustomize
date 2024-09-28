@@ -34,7 +34,7 @@ func (e *Editor) run(args ...string) error {
 	if e.doIt {
 		out, err := c.CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("%s out=%q", err.Error(), out)
+			return fmt.Errorf("failed to run go mod command in %s: %w (stdout=%q)", e.module.ShortName(), err, out)
 		}
 	} else {
 		fmt.Printf("in %-60s; %s\n", c.Dir, c.String())
@@ -57,17 +57,19 @@ func (e *Editor) Tidy() error {
 func (e *Editor) Pin(target misc.LaModule, oldV, newV semver.SemVer) error {
 	err := e.run(
 		"edit",
-		"-require="+target.ImportPath()+"@"+newV.String(),
+		"-dropreplace=sigs.k8s.io/kustomize/"+string(target.ShortName()),
+		"-dropreplace=sigs.k8s.io/kustomize/"+string(target.ShortName())+"@"+oldV.String(),
+		"-require=sigs.k8s.io/kustomize/"+string(target.ShortName())+"@"+newV.String(),
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w", err)
 	}
 	return e.run("tidy")
 }
 
 func (e *Editor) UnPin(target misc.LaModule, oldV semver.SemVer) error {
 	var r strings.Builder
-	r.WriteString(target.ImportPath())
+	r.WriteString("sigs.k8s.io/kustomize/" + string(target.ShortName()))
 	// Don't specify the old version.
 	// r.WriteString("@")
 	// r.WriteString(oldV.String())
@@ -79,7 +81,7 @@ func (e *Editor) UnPin(target misc.LaModule, oldV semver.SemVer) error {
 		"-replace="+r.String(),
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w", err)
 	}
 	return e.run("tidy")
 }

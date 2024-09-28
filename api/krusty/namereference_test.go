@@ -42,7 +42,7 @@ spec:
       serviceAccountName: mySvcAcct
       containers:
       - name: whatever
-        image: k8s.gcr.io/governmentCheese
+        image: registry.k8s.io/governmentCheese
 `)
 	th.WriteF("base/serviceAccount.yaml", `
 apiVersion: v1
@@ -61,7 +61,7 @@ spec:
   template:
     spec:
       containers:
-      - image: k8s.gcr.io/governmentCheese
+      - image: registry.k8s.io/governmentCheese
         name: whatever
       serviceAccountName: mySvcAcct
 ---
@@ -80,7 +80,7 @@ spec:
   template:
     spec:
       containers:
-      - image: k8s.gcr.io/governmentCheese
+      - image: registry.k8s.io/governmentCheese
         name: whatever
       serviceAccountName: mySvcAcct-private
 ---
@@ -115,7 +115,7 @@ commonLabels:
   app: external-dns
   instance: public
 images:
-- name: k8s.gcr.io/external-dns/external-dns
+- name: registry.k8s.io/external-dns/external-dns
   newName: xxx.azurecr.io/external-dns
   newTag: v0.7.4_sylr.1
 - name: quay.io/sylr/external-dns
@@ -153,7 +153,7 @@ commonLabels:
   app: external-dns
   instance: private
 images:
-- name: k8s.gcr.io/external-dns/external-dns
+- name: registry.k8s.io/external-dns/external-dns
   newName: xxx.azurecr.io/external-dns
   newTag: v0.7.4_sylr.1
 - name: quay.io/sylr/external-dns
@@ -192,7 +192,7 @@ commonLabels:
   app: external-dns
   instance: public
 images:
-- name: k8s.gcr.io/external-dns/external-dns
+- name: registry.k8s.io/external-dns/external-dns
   newName: quay.io/sylr/external-dns
   newTag: v0.7.4-73-g00a9a0c7
 secretGenerator:
@@ -243,7 +243,7 @@ spec:
       serviceAccountName: external-dns
       containers:
       - name: external-dns
-        image: k8s.gcr.io/external-dns/external-dns
+        image: registry.k8s.io/external-dns/external-dns
         args:
         - --domain-filter=""
         - --txt-owner-id=""
@@ -669,5 +669,202 @@ metadata:
     theConfigMap: cm-updated
     theNamespace: newNs
   name: newNs
+`)
+}
+
+func TestIssue4884_UseLocalConfigAsNameRefSource(t *testing.T) {
+	th := kusttest_test.MakeHarness(t)
+	th.WriteK(".", `
+resources:
+  - resources.yaml
+
+namePrefix: prefix-
+
+configurations:
+  - kustomize-nameref.yaml
+`)
+	th.WriteF("kustomize-nameref.yaml", `
+nameReference:
+- kind: IngressHost
+  fieldSpecs:
+  - path: spec/rules/host
+    kind: Ingress
+  - path: spec/tls/hosts
+    kind: Ingress
+  - path: spec/template/spec/containers/env/value
+    kind: Deployment
+- kind: IngressSecret
+  fieldSpecs:
+  - path: spec/tls/secretName
+    kind: Ingress
+namePrefix:
+- path: metadata/name
+  kind: IngressHost
+- path: metadata/name
+  kind: IngressSecret
+
+`)
+	th.WriteF("resources.yaml", `
+apiVersion: local/v1
+kind: IngressHost
+metadata:
+  name: test.fakedomain.com
+  namespace: test
+  annotations:
+    config.kubernetes.io/local-config: "true"
+---
+apiVersion: local/v1
+kind: IngressSecret
+metadata:
+  name: test-secret
+  namespace: test
+  annotations:
+    config.kubernetes.io/local-config: "true"
+---
+apiVersion: v1
+kind: Ingress
+metadata:
+  name: test-ingress
+  namespace: test
+spec:
+  rules:
+  - host: test.fakedomain.com
+  - host: do-not-touch.otherdomain.com
+  tls:
+  - hosts:
+    - test.fakedomain.com
+    secretName: test-secret
+  - hosts:
+    - do-not-touch.otherdomain.com
+    secretname: do-not-touch
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deployment
+  namespace: test
+spec:
+  template:
+    spec:
+      containers:
+      - name: tester
+        env:
+        - name: domain-name
+          value: test.fakedomain.com
+`)
+	m := th.Run(".", th.MakeDefaultOptions())
+	th.AssertActualEqualsExpected(m, `
+apiVersion: v1
+kind: Ingress
+metadata:
+  name: test-ingress
+  namespace: test
+spec:
+  rules:
+  - host: prefix-test.fakedomain.com
+  - host: do-not-touch.otherdomain.com
+  tls:
+  - hosts:
+    - prefix-test.fakedomain.com
+    secretName: prefix-test-secret
+  - hosts:
+    - do-not-touch.otherdomain.com
+    secretname: do-not-touch
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deployment
+  namespace: test
+spec:
+  template:
+    spec:
+      containers:
+      - env:
+        - name: domain-name
+          value: prefix-test.fakedomain.com
+        name: tester
+`)
+}
+
+func TestBackReferenceAdmissionPolicy(t *testing.T) {
+	th := kusttest_test.MakeHarness(t)
+	th.WriteK(".", `
+resources:
+- admission.yaml
+
+namePrefix: a-prefix-
+`)
+	th.WriteF("admission.yaml", `---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: sample-policy
+spec:
+  failurePolicy: Fail
+  paramKind:
+    apiVersion: apps/v1
+    kind: Deployment
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - apps
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - deployments
+  validations:
+    - expression: "!object.metadata.name.startsWith('test-')"
+      message: prefix 'test-' is not allowed
+      reason: Invalid
+---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: sample-policy-binding
+spec:
+  policyName: sample-policy
+  validationActions:
+  - Deny
+`)
+
+	m := th.Run(".", th.MakeDefaultOptions())
+	th.AssertActualEqualsExpected(m, `
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: a-prefix-sample-policy
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - apps
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - deployments
+  paramKind:
+    apiVersion: apps/v1
+    kind: Deployment
+  validations:
+  - expression: '!object.metadata.name.startsWith(''test-'')'
+    message: prefix 'test-' is not allowed
+    reason: Invalid
+---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: a-prefix-sample-policy-binding
+spec:
+  policyName: a-prefix-sample-policy
+  validationActions:
+  - Deny
 `)
 }

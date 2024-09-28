@@ -7,9 +7,11 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/kustomize/api/provider"
 	"sigs.k8s.io/kustomize/api/types"
-	"sigs.k8s.io/kustomize/kustomize/v4/commands/internal/kustfile"
+	"sigs.k8s.io/kustomize/kustomize/v5/commands/internal/kustfile"
 	"sigs.k8s.io/kustomize/kyaml/filesys"
 )
 
@@ -51,6 +53,14 @@ func TestCreateWithResources(t *testing.T) {
 	if !reflect.DeepEqual(m.Resources, expected) {
 		t.Fatalf("expected %+v but got %+v", expected, m.Resources)
 	}
+}
+
+func TestCreateWithResourcesWithFileNotFound(t *testing.T) {
+	fSys := filesys.MakeEmptyDirInMemory()
+	require.NoError(t, fSys.WriteFile("foo.yaml", []byte("")))
+	opts := createFlags{resources: "foo.yaml,bar.yaml"}
+	err := runCreate(opts, fSys, factory)
+	assert.EqualError(t, err, "bar.yaml has no match: must build at directory: not a valid directory: 'bar.yaml' doesn't exist")
 }
 
 func TestCreateWithNamespace(t *testing.T) {
